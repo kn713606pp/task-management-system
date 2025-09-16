@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作任務追蹤平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    
+    <style>
+        body { 
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+        }
+        
+        .task-card { 
+            transition: all 0.2s ease-in-out; 
+            cursor: grab;
+        }
+        .task-card:active { cursor: grabbing; }
+        .task-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5, #6366f1);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.45);
+            transform: translateY(-1px);
+        }
+        
+        .modal-overlay { transition: opacity 0.2s ease-in-out; }
+        .tab-active { 
+            color: #4338ca; 
+            background-color: #eef2ff;
+            border-bottom: 2px solid #4338ca;
+        }
+        
+        .sortable-ghost {
+            opacity: 0.4;
+            background: #eef2ff;
+            border: 2px dashed #6366f1;
+        }
+        
+        .priority-badge-緊急 { background-color: #fef2f2; color: #b91c1c; }
+        .priority-badge-高 { background-color: #fff7ed; color: #c2410c; }
+        .priority-badge-中 { background-color: #eff6ff; color: #1d4ed8; }
+        .priority-badge-低 { background-color: #f5f3ff; color: #6d28d9; }
+        
+        .loading-spinner {
+            border-top-color: #4f46e5;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .status-待辦事項 { background-color: #fef3c7; color: #92400e; }
+        .status-暫緩中 { background-color: #fee2e2; color: #b91c1c; }
+        .status-已完成 { background-color: #d1fae5; color: #065f46; }
+        
+        .department-color { width: 4px; height: 100%; border-radius: 2px; }
+        .empty-state { text-align: center; padding: 3rem 1rem; color: #94a3b8; }
+    </style>
+</head>
+
+<body class="antialiased">
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-slate-50/80 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="text-center">
+            <div class="w-12 h-12 border-4 border-slate-300 border-t-indigo-500 rounded-full loading-spinner mb-4"></div>
+            <p class="text-slate-600 font-medium">載入中...</p>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 modal-overlay">
+        <div class="bg-white w-full max-w-md rounded-xl shadow-xl fade-in">
+            <div class="p-6 md:p-8">
+                <h2 class="text-2xl font-bold mb-2 text-slate-800">歡迎使用任務追蹤平台</h2>
+                <p class="text-sm text-slate-500 mb-6">請選擇或註冊使用者帳號。</p>
+                
+                <div id="user-selection" class="space-y-3"></div>
+                
+                <div class="mt-6 pt-4 border-t border-slate-200">
+                    <button id="add-user-btn" class="w-full flex items-center justify-center px-4 py-3 text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition">
+                        <i class="fas fa-user-plus mr-2"></i>新增使用者
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div id="add-user-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-white w-full max-w-md rounded-xl shadow-xl fade-in">
+            <form id="add-user-form" class="p-6 md:p-8">
+                <h3 class="text-xl font-semibold mb-4 text-slate-800">新增使用者</h3>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">使用者姓名</label>
+                        <input type="text" id="new-user-name" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="請輸入姓名">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">部門</label>
+                        <select id="new-user-department" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                            <option value="行政部">行政部</option>
+                            <option value="技術部">技術部</option>
+                            <option value="業務部">業務部</option>
+                            <option value="財務部">財務部</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">角色</label>
+                        <select id="new-user-role" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                            <option value="user">一般使用者</option>
+                            <option value="manager">管理者</option>
+                            <option value="admin">系統管理員</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" id="cancel-add-user" class="px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition">取消</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">新增</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app-container" class="hidden">
+        <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-6xl">
+            <!-- Header -->
+            <header class="text-center mb-8">
+                <div class="flex justify-between items-center mb-4">
+                    <h1 class="text-3xl sm:text-4xl font-bold text-slate-900">工作任務追蹤平台</h1>
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm text-slate-600">您好，<span id="current-user-name" class="font-semibold text-indigo-600"></span></span>
+                        <button id="logout-btn" class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition p-2 rounded-md">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Controls -->
+                <div class="flex justify-center items-center space-x-4 mb-6">
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm font-medium text-slate-700">檢視:</label>
+                        <select id="view-switcher" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm">
+                            <option value="my">我的任務</option>
+                            <option value="all">全部任務</option>
+                        </select>
+                    </div>
+                    
+                    <div class="relative">
+                        <input type="text" id="search-input" placeholder="搜尋任務..." class="pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                        <i class="fas fa-search absolute left-3 top-3 text-slate-400"></i>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Add Task Form -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-200 mb-8">
+                <h2 class="text-xl font-semibold mb-4 text-slate-800">
+                    <i class="fas fa-plus-circle mr-2 text-indigo-600"></i>新增任務
+                </h2>
+                
+                <form id="add-task-form" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-2">優先度</label>
+                            <select id="task-priority" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                                <option value="緊急">🔴 緊急</option>
+                                <option value="高">🟡 高</option>
+                                <option value="中" selected>🔵 中</option>
+                                <option value="低">⚪ 低</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-2">負責人</label>
+                            <input type="text" id="task-assignee" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg" placeholder="請輸入負責人">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-2">部門</label>
+                            <select id="task-department" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                                <option value="行政部">行政部</option>
+                                <option value="技術部">技術部</option>
+                                <option value="業務部">業務部</option>
+                                <option value="財務部">財務部</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-2">任務標題</label>
+                        <input type="text" id="task-title" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg" placeholder="請輸入任務標題">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-2">任務描述</label>
+                        <textarea id="task-description" rows="3" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg" placeholder="請輸入任務描述（可選）"></textarea>
+                    </div>
+                    
+                    <button type="submit" class="w-full btn-primary text-white font-semibold py-3 px-4 rounded-lg">
+                        <i class="fas fa-plus mr-2"></i>新增任務
+                    </button>
+                </form>
+            </div>
+
+            <!-- Tasks Container -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Todo Column -->
+                <div class="bg-white rounded-xl shadow-lg border border-slate-200">
+                    <div class="p-4 border-b border-slate-200">
+                        <h3 class="text-lg font-semibold text-slate-800 flex items-center">
+                            <div class="w-3 h-3 bg-amber-500 rounded-full mr-2"></div>
+                            待辦事項 <span id="todo-count" class="ml-2 text-sm bg-amber-100 text-amber-800 px-2 py-1 rounded-full">0</span>
+                        </h3>
+                    </div>
+                    <div id="todo-list" class="p-4 space-y-3 min-h-[300px]"></div>
+                </div>
+
+                <!-- Hold Column -->
+                <div class="bg-white rounded-xl shadow-lg border border-slate-200">
+                    <div class="p-4 border-b border-slate-200">
+                        <h3 class="text-lg font-semibold text-slate-800 flex items-center">
+                            <div class="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                            暫緩中 <span id="hold-count" class="ml-2 text-sm bg-red-100 text-red-800 px-2 py-1 rounded-full">0</span>
+                        </h3>
+                    </div>
+                    <div id="hold-list" class="p-4 space-y-3 min-h-[300px]"></div>
+                </div>
+
+                <!-- Completed Column -->
+                <div class="bg-white rounded-xl shadow-lg border border-slate-200">
+                    <div class="p-4 border-b border-slate-200">
+                        <h3 class="text-lg font-semibold text-slate-800 flex items-center">
+                            <div class="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                            已完成 <span id="completed-count" class="ml-2 text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">0</span>
+                        </h3>
+                    </div>
+                    <div id="completed-list" class="p-4 space-y-3 min-h-[300px]"></div>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="mt-8 bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+                <h3 class="text-lg font-semibold text-slate-800 mb-4">統計資訊</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div class="p-4 bg-amber-50 rounded-lg">
+                        <div class="text-2xl font-bold text-amber-700" id="stat-todo">0</div>
+                        <div class="text-sm text-amber-600">待辦事項</div>
+                    </div>
+                    <div class="p-4 bg-red-50 rounded-lg">
+                        <div class="text-2xl font-bold text-red-700" id="stat-hold">0</div>
+                        <div class="text-sm text-red-600">暫緩中</div>
+                    </div>
+                    <div class="p-4 bg-green-50 rounded-lg">
+                        <div class="text-2xl font-bold text-green-700" id="stat-completed">0</div>
+                        <div class="text-sm text-green-600">已完成</div>
+                    </div>
+                    <div class="p-4 bg-blue-50 rounded-lg">
+                        <div class="text-2xl font-bold text-blue-700" id="stat-total">0</div>
+                        <div class="text-sm text-blue-600">總任務數</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Edit Modal -->
+    <div id="edit-task-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-white w-full max-w-lg rounded-xl shadow-xl">
+            <form id="edit-task-form">
+                <div class="p-6">
+                    <h3 class="text-xl font-semibold mb-4 text-slate-800">編輯任務</h3>
+                    
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">優先度</label>
+                                <select id="edit-task-priority" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                    <option value="緊急">🔴 緊急</option>
+                                    <option value="高">🟡 高</option>
+                                    <option value="中">🔵 中</option>
+                                    <option value="低">⚪ 低</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">狀態</label>
+                                <select id="edit-task-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                    <option value="待辦事項">待辦事項</option>
+                                    <option value="暫緩中">暫緩中</option>
+                                    <option value="已完成">已完成</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">負責人</label>
+                            <input type="text" id="edit-task-assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">標題</label>
+                            <input type="text" id="edit-task-title" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">描述</label>
+                            <textarea id="edit-task-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-slate-50 px-6 py-4 flex justify-end space-x-3 rounded-b-xl">
+                    <button type="button" id="cancel-edit-task" class="px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-100 transition">取消</button>
+                    <button type="button" id="delete-task-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">刪除</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">儲存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 簡化版任務管理系統
+        class SimpleTaskManager {
+            constructor() {
+                this.currentUser = null;
+                this.tasks = JSON.parse(localStorage.getItem('tasks') || '[]');
+                this.users = JSON.parse(localStorage.getItem('users') || '[]');
+                this.currentEditingTaskId = null;
+                this.init();
+            }
+
+            init() {
+                this.initializeEventListeners();
+                if (this.users.length === 0) {
+                    // 建立預設使用者
+                    this.users = [
+                        { id: '1', name: '管理者', department: '行政部', role: 'admin' },
+                        { id: '2', name: '李小明', department: '技術部', role: 'user' },
+                        { id: '3', name: '王小華', department: '業務部', role: 'user' },
+                        { id: '4', name: '張小芳', department: '財務部', role: 'user' }
+                    ];
+                    this.saveUsers();
+                }
+                
+                if (this.tasks.length === 0) {
+                    this.createSampleTasks();
+                }
+                
+                this.showAuthModal();
+            }
+
+            createSampleTasks() {
+                this.tasks = [
+                    {
+                        id: '1',
+                        title: '系統維護與更新',
+                        description: '進行伺服器系統的定期維護',
+                        priority: '高',
+                        status: '待辦事項',
+                        assignee: '李小明',
+                        department: '技術部',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: '2',
+                        title: '客戶需求分析',
+                        description: '分析新客戶需求並撰寫報告',
+                        priority: '中',
+                        status: '暫緩中',
+                        assignee: '王小華',
+                        department: '業務部',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: '3',
+                        title: '月報表製作',
+                        description: '製作本月財務報表',
+                        priority: '緊急',
+                        status: '已完成',
+                        assignee: '張小芳',
+                        department: '財務部',
+                        createdAt: new Date().toISOString()
+                    }
+                ];
+                this.saveTasks();
+            }
+
+            initializeEventListeners() {
+                // 認證相關
+                document.getElementById('add-user-btn').addEventListener('click', () => this.showAddUserModal());
+                document.getElementById('add-user-form').addEventListener('submit', (e) => this.handleAddUser(e));
+                document.getElementById('cancel-add-user').addEventListener('click', () => this.hideAddUserModal());
+                document.getElementById('logout-btn').addEventListener('click', () => this.logout());
+
+                // 任務相關
+                document.getElementById('add-task-form').addEventListener('submit', (e) => this.handleAddTask(e));
+                document.getElementById('edit-task-form').addEventListener('submit', (e) => this.handleEditTask(e));
+    
