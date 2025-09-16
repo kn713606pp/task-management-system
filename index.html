@@ -1,417 +1,998 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工作任務追蹤平台</title>
+    <title>任務管理系統 - 最終修復版</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
-    
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        body { 
-            font-family: 'Inter', 'Noto Sans TC', sans-serif;
-            background-color: #f8fafc;
+        .task-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        
-        .task-card { 
-            transition: all 0.2s ease-in-out; 
-            cursor: grab;
-        }
-        .task-card:active { cursor: grabbing; }
         .task-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
         }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #4f46e5, #6366f1);
-            transition: all 0.3s ease;
+        .modal-backdrop {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
         }
-        .btn-primary:hover {
-            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.45);
-            transform: translateY(-1px);
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
         }
-        
-        .modal-overlay { transition: opacity 0.2s ease-in-out; }
-        .tab-active { 
-            color: #4338ca; 
-            background-color: #eef2ff;
-            border-bottom: 2px solid #4338ca;
-        }
-        
-        .sortable-ghost {
-            opacity: 0.4;
-            background: #eef2ff;
-            border: 2px dashed #6366f1;
-        }
-        
-        .priority-badge-緊急 { background-color: #fef2f2; color: #b91c1c; }
-        .priority-badge-高 { background-color: #fff7ed; color: #c2410c; }
-        .priority-badge-中 { background-color: #eff6ff; color: #1d4ed8; }
-        .priority-badge-低 { background-color: #f5f3ff; color: #6d28d9; }
-        
-        .loading-spinner {
-            border-top-color: #4f46e5;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
-        .fade-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
-        
-        .status-待辦事項 { background-color: #fef3c7; color: #92400e; }
-        .status-暫緩中 { background-color: #fee2e2; color: #b91c1c; }
-        .status-已完成 { background-color: #d1fae5; color: #065f46; }
-        
-        .department-color { width: 4px; height: 100%; border-radius: 2px; }
-        .empty-state { text-align: center; padding: 3rem 1rem; color: #94a3b8; }
+        .sortable-ghost {
+            opacity: 0.5;
+        }
+        .sortable-chosen {
+            transform: rotate(5deg);
+        }
+        .status-pending { border-left: 4px solid #f59e0b; }
+        .status-in-progress { border-left: 4px solid #3b82f6; }
+        .status-completed { border-left: 4px solid #10b981; }
+        .success-message {
+            animation: slideInRight 0.3s ease-out;
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .button-clicked {
+            animation: buttonPress 0.1s ease-in-out;
+        }
+        @keyframes buttonPress {
+            0% { transform: scale(1); }
+            50% { transform: scale(0.95); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <!-- 通知系統 -->
+    <div id="notification-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
 
-<body class="antialiased">
-    <!-- Loading Overlay -->
-    <div id="loading-overlay" class="fixed inset-0 bg-slate-50/80 backdrop-blur-sm flex items-center justify-center z-50">
-        <div class="text-center">
-            <div class="w-12 h-12 border-4 border-slate-300 border-t-indigo-500 rounded-full loading-spinner mb-4"></div>
-            <p class="text-slate-600 font-medium">載入中...</p>
-        </div>
-    </div>
+    <!-- 主容器 -->
+    <div id="app" class="min-h-screen">
+        <!-- 認證模態框 -->
+        <div id="auth-modal" class="fixed inset-0 modal-backdrop flex items-center justify-center z-40 p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-8 fade-in">
+                <div class="text-center mb-8">
+                    <div class="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl mx-auto mb-4 flex items-center justify-center">
+                        <i class="fas fa-tasks text-white text-2xl"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-slate-800 mb-2">任務管理系統</h1>
+                    <p class="text-slate-600">請選擇使用者或新增新使用者</p>
+                </div>
 
-    <!-- Auth Modal -->
-    <div id="auth-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 modal-overlay">
-        <div class="bg-white w-full max-w-md rounded-xl shadow-xl fade-in">
-            <div class="p-6 md:p-8">
-                <h2 class="text-2xl font-bold mb-2 text-slate-800">歡迎使用任務追蹤平台</h2>
-                <p class="text-sm text-slate-500 mb-6">請選擇或註冊使用者帳號。</p>
-                
-                <div id="user-selection" class="space-y-3"></div>
-                
-                <div class="mt-6 pt-4 border-t border-slate-200">
-                    <button id="add-user-btn" class="w-full flex items-center justify-center px-4 py-3 text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition">
-                        <i class="fas fa-user-plus mr-2"></i>新增使用者
-                    </button>
+                <!-- 使用者選擇列表 -->
+                <div id="user-list" class="space-y-3 mb-6">
+                    <!-- 動態生成使用者列表 -->
+                </div>
+
+                <!-- 新增使用者按鈕 -->
+                <button 
+                    type="button" 
+                    id="add-user-btn" 
+                    class="w-full flex items-center justify-center px-4 py-3 text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-indigo-200 hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    data-test="add-user-button"
+                >
+                    <i class="fas fa-plus mr-2"></i>
+                    新增使用者
+                </button>
+
+                <!-- 偵錯信息（開發時顯示） -->
+                <div id="auth-debug" class="mt-4 text-xs text-slate-500 hidden">
+                    <p>Debug: 認證模態框已載入</p>
+                    <p id="auth-debug-info"></p>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Add User Modal -->
-    <div id="add-user-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-        <div class="bg-white w-full max-w-md rounded-xl shadow-xl fade-in">
-            <form id="add-user-form" class="p-6 md:p-8">
-                <h3 class="text-xl font-semibold mb-4 text-slate-800">新增使用者</h3>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">使用者姓名</label>
-                        <input type="text" id="new-user-name" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="請輸入姓名">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">部門</label>
-                        <select id="new-user-department" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                            <option value="行政部">行政部</option>
-                            <option value="技術部">技術部</option>
-                            <option value="業務部">業務部</option>
-                            <option value="財務部">財務部</option>
-                        </select>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">角色</label>
-                        <select id="new-user-role" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                            <option value="user">一般使用者</option>
-                            <option value="manager">管理者</option>
-                            <option value="admin">系統管理員</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" id="cancel-add-user" class="px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition">取消</button>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">新增</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Main App -->
-    <div id="app-container" class="hidden">
-        <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-6xl">
-            <!-- Header -->
-            <header class="text-center mb-8">
-                <div class="flex justify-between items-center mb-4">
-                    <h1 class="text-3xl sm:text-4xl font-bold text-slate-900">工作任務追蹤平台</h1>
-                    <div class="flex items-center space-x-4">
-                        <span class="text-sm text-slate-600">您好，<span id="current-user-name" class="font-semibold text-indigo-600"></span></span>
-                        <button id="logout-btn" class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition p-2 rounded-md">
-                            <i class="fas fa-sign-out-alt"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Controls -->
-                <div class="flex justify-center items-center space-x-4 mb-6">
-                    <div class="flex items-center space-x-2">
-                        <label class="text-sm font-medium text-slate-700">檢視:</label>
-                        <select id="view-switcher" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm">
-                            <option value="my">我的任務</option>
-                            <option value="all">全部任務</option>
-                        </select>
-                    </div>
-                    
-                    <div class="relative">
-                        <input type="text" id="search-input" placeholder="搜尋任務..." class="pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                        <i class="fas fa-search absolute left-3 top-3 text-slate-400"></i>
-                    </div>
-                </div>
-            </header>
-
-            <!-- Add Task Form -->
-            <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-200 mb-8">
-                <h2 class="text-xl font-semibold mb-4 text-slate-800">
-                    <i class="fas fa-plus-circle mr-2 text-indigo-600"></i>新增任務
+        <!-- 新增使用者模態框 -->
+        <div id="add-user-modal" class="fixed inset-0 modal-backdrop hidden items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 fade-in">
+                <h2 class="text-xl font-semibold mb-6 text-slate-800 flex items-center">
+                    <i class="fas fa-user-plus mr-2 text-indigo-600"></i>
+                    新增使用者
                 </h2>
                 
-                <form id="add-task-form" class="space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-600 mb-2">優先度</label>
-                            <select id="task-priority" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                                <option value="緊急">🔴 緊急</option>
-                                <option value="高">🟡 高</option>
-                                <option value="中" selected>🔵 中</option>
-                                <option value="低">⚪ 低</option>
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-medium text-slate-600 mb-2">負責人</label>
-                            <input type="text" id="task-assignee" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg" placeholder="請輸入負責人">
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-medium text-slate-600 mb-2">部門</label>
-                            <select id="task-department" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                                <option value="行政部">行政部</option>
-                                <option value="技術部">技術部</option>
-                                <option value="業務部">業務部</option>
-                                <option value="財務部">財務部</option>
-                            </select>
-                        </div>
+                <!-- 錯誤訊息區域 -->
+                <div id="add-user-error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm hidden">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <span id="add-user-error-text"></span>
+                </div>
+                
+                <form id="add-user-form" class="space-y-4" novalidate>
+                    <div>
+                        <label for="new-user-name" class="block text-sm font-medium text-slate-700 mb-1">
+                            姓名 <span class="text-red-500">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="new-user-name" 
+                            name="name"
+                            required
+                            maxlength="20"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                            placeholder="請輸入使用者姓名"
+                            autocomplete="name"
+                        >
+                        <div class="text-xs text-slate-500 mt-1">最多 20 個字元</div>
                     </div>
                     
                     <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-2">任務標題</label>
-                        <input type="text" id="task-title" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg" placeholder="請輸入任務標題">
+                        <label for="new-user-department" class="block text-sm font-medium text-slate-700 mb-1">
+                            部門 <span class="text-red-500">*</span>
+                        </label>
+                        <select 
+                            id="new-user-department" 
+                            name="department"
+                            required
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                        >
+                            <option value="">請選擇部門</option>
+                            <option value="工程部">工程部</option>
+                            <option value="行銷部">行銷部</option>
+                            <option value="財務部">財務部</option>
+                            <option value="人事部">人事部</option>
+                            <option value="業務部">業務部</option>
+                            <option value="設計部">設計部</option>
+                            <option value="客服部">客服部</option>
+                            <option value="管理部">管理部</option>
+                        </select>
                     </div>
                     
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-2">任務描述</label>
-                        <textarea id="task-description" rows="3" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg" placeholder="請輸入任務描述（可選）"></textarea>
+                    <div class="flex gap-3 pt-4">
+                        <button 
+                            type="submit" 
+                            id="submit-add-user"
+                            class="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        >
+                            <i class="fas fa-check mr-2"></i>
+                            確定新增
+                        </button>
+                        <button 
+                            type="button" 
+                            id="cancel-add-user" 
+                            class="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+                        >
+                            <i class="fas fa-times mr-2"></i>
+                            取消
+                        </button>
                     </div>
-                    
-                    <button type="submit" class="w-full btn-primary text-white font-semibold py-3 px-4 rounded-lg">
-                        <i class="fas fa-plus mr-2"></i>新增任務
-                    </button>
                 </form>
-            </div>
 
-            <!-- Tasks Container -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Todo Column -->
-                <div class="bg-white rounded-xl shadow-lg border border-slate-200">
-                    <div class="p-4 border-b border-slate-200">
-                        <h3 class="text-lg font-semibold text-slate-800 flex items-center">
-                            <div class="w-3 h-3 bg-amber-500 rounded-full mr-2"></div>
-                            待辦事項 <span id="todo-count" class="ml-2 text-sm bg-amber-100 text-amber-800 px-2 py-1 rounded-full">0</span>
-                        </h3>
-                    </div>
-                    <div id="todo-list" class="p-4 space-y-3 min-h-[300px]"></div>
-                </div>
-
-                <!-- Hold Column -->
-                <div class="bg-white rounded-xl shadow-lg border border-slate-200">
-                    <div class="p-4 border-b border-slate-200">
-                        <h3 class="text-lg font-semibold text-slate-800 flex items-center">
-                            <div class="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                            暫緩中 <span id="hold-count" class="ml-2 text-sm bg-red-100 text-red-800 px-2 py-1 rounded-full">0</span>
-                        </h3>
-                    </div>
-                    <div id="hold-list" class="p-4 space-y-3 min-h-[300px]"></div>
-                </div>
-
-                <!-- Completed Column -->
-                <div class="bg-white rounded-xl shadow-lg border border-slate-200">
-                    <div class="p-4 border-b border-slate-200">
-                        <h3 class="text-lg font-semibold text-slate-800 flex items-center">
-                            <div class="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                            已完成 <span id="completed-count" class="ml-2 text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">0</span>
-                        </h3>
-                    </div>
-                    <div id="completed-list" class="p-4 space-y-3 min-h-[300px]"></div>
-                </div>
-            </div>
-
-            <!-- Statistics -->
-            <div class="mt-8 bg-white p-6 rounded-xl shadow-lg border border-slate-200">
-                <h3 class="text-lg font-semibold text-slate-800 mb-4">統計資訊</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div class="p-4 bg-amber-50 rounded-lg">
-                        <div class="text-2xl font-bold text-amber-700" id="stat-todo">0</div>
-                        <div class="text-sm text-amber-600">待辦事項</div>
-                    </div>
-                    <div class="p-4 bg-red-50 rounded-lg">
-                        <div class="text-2xl font-bold text-red-700" id="stat-hold">0</div>
-                        <div class="text-sm text-red-600">暫緩中</div>
-                    </div>
-                    <div class="p-4 bg-green-50 rounded-lg">
-                        <div class="text-2xl font-bold text-green-700" id="stat-completed">0</div>
-                        <div class="text-sm text-green-600">已完成</div>
-                    </div>
-                    <div class="p-4 bg-blue-50 rounded-lg">
-                        <div class="text-2xl font-bold text-blue-700" id="stat-total">0</div>
-                        <div class="text-sm text-blue-600">總任務數</div>
-                    </div>
+                <!-- 表單偵錯信息 -->
+                <div id="form-debug" class="mt-4 text-xs text-slate-500 hidden">
+                    <p>Debug: 新增使用者表單已載入</p>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Task Edit Modal -->
-    <div id="edit-task-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-        <div class="bg-white w-full max-w-lg rounded-xl shadow-xl">
-            <form id="edit-task-form">
-                <div class="p-6">
-                    <h3 class="text-xl font-semibold mb-4 text-slate-800">編輯任務</h3>
-                    
-                    <div class="space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">優先度</label>
-                                <select id="edit-task-priority" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                    <option value="緊急">🔴 緊急</option>
-                                    <option value="高">🟡 高</option>
-                                    <option value="中">🔵 中</option>
-                                    <option value="低">⚪ 低</option>
-                                </select>
+        <!-- 主要內容區域 -->
+        <div id="main-content" class="hidden">
+            <!-- 頂部導航 -->
+            <nav class="bg-white shadow-sm border-b border-slate-200">
+                <div class="container mx-auto px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-tasks text-white text-sm"></i>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">狀態</label>
-                                <select id="edit-task-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                    <option value="待辦事項">待辦事項</option>
-                                    <option value="暫緩中">暫緩中</option>
-                                    <option value="已完成">已完成</option>
-                                </select>
+                                <h1 class="text-xl font-bold text-slate-800">任務管理系統</h1>
+                                <p class="text-sm text-slate-600" id="current-user-info">歡迎使用</p>
                             </div>
                         </div>
-                        
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">負責人</label>
-                            <input type="text" id="edit-task-assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">標題</label>
-                            <input type="text" id="edit-task-title" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">描述</label>
-                            <textarea id="edit-task-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+                        <div class="flex items-center space-x-4">
+                            <button id="debug-toggle" class="text-slate-500 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100" title="切換偵錯模式">
+                                <i class="fas fa-bug"></i>
+                            </button>
+                            <button id="logout-btn" class="flex items-center px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
+                                <i class="fas fa-sign-out-alt mr-2"></i>
+                                登出
+                            </button>
                         </div>
                     </div>
                 </div>
-                
-                <div class="bg-slate-50 px-6 py-4 flex justify-end space-x-3 rounded-b-xl">
-                    <button type="button" id="cancel-edit-task" class="px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-100 transition">取消</button>
-                    <button type="button" id="delete-task-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">刪除</button>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">儲存</button>
+            </nav>
+
+            <!-- 統計區域 -->
+            <div class="container mx-auto px-6 py-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+                        <div class="flex items-center">
+                            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                                <i class="fas fa-tasks text-blue-600 text-xl"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-bold text-slate-800" id="total-tasks">0</p>
+                                <p class="text-sm text-slate-600">總任務數</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+                        <div class="flex items-center">
+                            <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
+                                <i class="fas fa-clock text-yellow-600 text-xl"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-bold text-slate-800" id="pending-tasks">0</p>
+                                <p class="text-sm text-slate-600">待處理</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+                        <div class="flex items-center">
+                            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                                <i class="fas fa-spinner text-blue-600 text-xl"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-bold text-slate-800" id="in-progress-tasks">0</p>
+                                <p class="text-sm text-slate-600">進行中</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+                        <div class="flex items-center">
+                            <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+                                <i class="fas fa-check text-green-600 text-xl"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-bold text-slate-800" id="completed-tasks">0</p>
+                                <p class="text-sm text-slate-600">已完成</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </form>
+
+                <!-- 任務管理區域 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-semibold text-slate-800">任務管理</h2>
+                        <button id="add-task-btn" class="flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium">
+                            <i class="fas fa-plus mr-2"></i>
+                            新增任務
+                        </button>
+                    </div>
+                    
+                    <!-- 任務列表 -->
+                    <div id="tasks-container" class="space-y-4">
+                        <!-- 動態生成任務 -->
+                        <div class="text-center py-8 text-slate-500">
+                            <i class="fas fa-clipboard-list text-4xl mb-4"></i>
+                            <p>暫無任務，點擊「新增任務」開始使用</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // 簡化版任務管理系統
-        class SimpleTaskManager {
+        class TaskManagerFinal {
             constructor() {
                 this.currentUser = null;
-                this.tasks = JSON.parse(localStorage.getItem('tasks') || '[]');
-                this.users = JSON.parse(localStorage.getItem('users') || '[]');
-                this.currentEditingTaskId = null;
+                this.users = this.loadFromStorage('taskManager_users', []);
+                this.tasks = this.loadFromStorage('taskManager_tasks', []);
+                this.debugMode = false;
+                this.eventListenersSet = false;
+                
+                console.log('🚀 TaskManager 最終版本初始化開始...');
                 this.init();
             }
 
+            // 工具方法
+            debug(message, data = null) {
+                const timestamp = new Date().toLocaleTimeString();
+                const logMessage = `[${timestamp}] ${message}`;
+                console.log(logMessage, data || '');
+                
+                // 更新偵錯信息顯示
+                if (this.debugMode) {
+                    this.updateDebugInfo(logMessage);
+                }
+            }
+
+            updateDebugInfo(message) {
+                const authDebugInfo = document.getElementById('auth-debug-info');
+                if (authDebugInfo) {
+                    authDebugInfo.textContent = message;
+                }
+            }
+
+            loadFromStorage(key, defaultValue) {
+                try {
+                    const data = localStorage.getItem(key);
+                    return data ? JSON.parse(data) : defaultValue;
+                } catch (error) {
+                    console.warn(`載入 ${key} 失敗:`, error);
+                    return defaultValue;
+                }
+            }
+
+            saveToStorage(key, data) {
+                try {
+                    localStorage.setItem(key, JSON.stringify(data));
+                    this.debug(`${key} 已儲存`);
+                } catch (error) {
+                    console.error(`儲存 ${key} 失敗:`, error);
+                }
+            }
+
+            // 初始化
             init() {
-                this.initializeEventListeners();
+                this.debug('開始初始化應用程式');
+                
+                // 確保在 DOM 完全載入後初始化
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        this.performInitialization();
+                    });
+                } else {
+                    this.performInitialization();
+                }
+            }
+
+            performInitialization() {
+                try {
+                    this.debug('執行初始化程序');
+                    
+                    // 設定事件監聽器
+                    this.setupEventListeners();
+                    
+                    // 建立預設資料
+                    this.initializeDefaultData();
+                    
+                    // 顯示認證界面
+                    this.showAuthenticationUI();
+                    
+                    this.debug('✅ 初始化完成');
+                } catch (error) {
+                    console.error('❌ 初始化失敗:', error);
+                    this.showNotification('系統初始化失敗', 'error');
+                }
+            }
+
+            // 事件處理系統
+            setupEventListeners() {
+                if (this.eventListenersSet) {
+                    this.debug('⚠️ 事件監聽器已設定，跳過');
+                    return;
+                }
+
+                this.debug('🔧 設定事件監聽器');
+
+                // 全域點擊事件處理
+                document.addEventListener('click', (e) => {
+                    this.handleClick(e);
+                });
+
+                // 全域表單提交事件處理
+                document.addEventListener('submit', (e) => {
+                    this.handleSubmit(e);
+                });
+
+                // 鍵盤事件處理
+                document.addEventListener('keydown', (e) => {
+                    this.handleKeydown(e);
+                });
+
+                this.eventListenersSet = true;
+                this.debug('✅ 事件監聽器設定完成');
+            }
+
+            handleClick(e) {
+                const target = e.target;
+                const id = target.id;
+                const closest = target.closest('[id]');
+                const closestId = closest ? closest.id : null;
+
+                // 記錄點擊事件（除非是很頻繁的事件）
+                if (!['debug-toggle'].includes(id)) {
+                    this.debug(`點擊事件: ${id || closestId || target.className.split(' ')[0]}`);
+                }
+
+                // 按鈕點擊動畫效果
+                if (target.tagName === 'BUTTON') {
+                    target.classList.add('button-clicked');
+                    setTimeout(() => target.classList.remove('button-clicked'), 150);
+                }
+
+                // 處理特定按鈕點擊
+                switch(id) {
+                    case 'add-user-btn':
+                        this.debug('🎯 新增使用者按鈕被點擊');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.handleAddUserButtonClick();
+                        break;
+                    
+                    case 'cancel-add-user':
+                        this.debug('🎯 取消新增使用者');
+                        e.preventDefault();
+                        this.hideAddUserModal();
+                        break;
+                    
+                    case 'logout-btn':
+                        this.debug('🎯 登出');
+                        this.logout();
+                        break;
+                    
+                    case 'debug-toggle':
+                        this.toggleDebugMode();
+                        break;
+                    
+                    default:
+                        // 檢查使用者選擇按鈕
+                        if (target.classList.contains('user-select-btn') || closestId === 'user-select-btn') {
+                            const button = target.classList.contains('user-select-btn') ? target : closest;
+                            const userId = button.getAttribute('data-user-id');
+                            if (userId) {
+                                this.debug(`🎯 選擇使用者: ${userId}`);
+                                this.selectUser(userId);
+                            }
+                        }
+                        break;
+                }
+            }
+
+            handleSubmit(e) {
+                const form = e.target;
+                const id = form.id;
+                
+                this.debug(`📋 表單提交: ${id}`);
+                e.preventDefault();
+
+                switch(id) {
+                    case 'add-user-form':
+                        this.handleAddUserFormSubmit(e);
+                        break;
+                    
+                    default:
+                        this.debug('⚠️ 未處理的表單提交');
+                        break;
+                }
+            }
+
+            handleKeydown(e) {
+                // ESC 關閉模態框
+                if (e.key === 'Escape') {
+                    this.hideAllModals();
+                }
+            }
+
+            // 新增使用者功能
+            handleAddUserButtonClick() {
+                this.debug('🔥 處理新增使用者按鈕點擊');
+                
+                try {
+                    this.showAddUserModal();
+                    this.debug('✅ 新增使用者模態框已顯示');
+                } catch (error) {
+                    console.error('❌ 顯示新增使用者模態框失敗:', error);
+                    this.showNotification('無法開啟新增使用者視窗', 'error');
+                }
+            }
+
+            showAddUserModal() {
+                this.debug('📱 顯示新增使用者模態框');
+                
+                const modal = document.getElementById('add-user-modal');
+                if (!modal) {
+                    throw new Error('找不到新增使用者模態框元素');
+                }
+
+                // 顯示模態框
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                
+                // 清空並重置表單
+                this.resetAddUserForm();
+                
+                // 聚焦到姓名欄位
+                setTimeout(() => {
+                    const nameInput = document.getElementById('new-user-name');
+                    if (nameInput) {
+                        nameInput.focus();
+                        nameInput.select();
+                    }
+                }, 150);
+                
+                this.debug('✅ 新增使用者模態框已顯示');
+            }
+
+            hideAddUserModal() {
+                this.debug('📱 隱藏新增使用者模態框');
+                
+                const modal = document.getElementById('add-user-modal');
+                if (modal) {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    
+                    // 清空錯誤訊息
+                    this.hideAddUserError();
+                    
+                    this.debug('✅ 新增使用者模態框已隱藏');
+                }
+            }
+
+            resetAddUserForm() {
+                const form = document.getElementById('add-user-form');
+                if (form) {
+                    form.reset();
+                    
+                    // 移除驗證樣式
+                    const inputs = form.querySelectorAll('input, select');
+                    inputs.forEach(input => {
+                        input.classList.remove('border-red-500', 'border-green-500');
+                    });
+                    
+                    this.debug('📋 新增使用者表單已重置');
+                }
+            }
+
+            handleAddUserFormSubmit(e) {
+                this.debug('📋 處理新增使用者表單提交');
+                
+                const formData = new FormData(e.target);
+                const name = formData.get('name')?.trim();
+                const department = formData.get('department');
+                
+                // 驗證輸入
+                const validation = this.validateUserInput(name, department);
+                if (!validation.valid) {
+                    this.showAddUserError(validation.message);
+                    this.highlightInvalidFields(validation.fields);
+                    return;
+                }
+
+                // 檢查重複使用者
+                const existingUser = this.users.find(user => 
+                    user.name.toLowerCase() === name.toLowerCase()
+                );
+                if (existingUser) {
+                    this.showAddUserError(`使用者「${name}」已存在`);
+                    this.highlightInvalidFields(['name']);
+                    return;
+                }
+
+                // 建立新使用者
+                const newUser = {
+                    id: this.generateId(),
+                    name: name,
+                    department: department,
+                    createdAt: new Date().toISOString()
+                };
+
+                this.debug('👤 建立新使用者:', newUser);
+                
+                // 儲存使用者
+                this.users.push(newUser);
+                this.saveUsers();
+                
+                // 更新 UI
+                this.renderUserList();
+                this.hideAddUserModal();
+                
+                // 顯示成功訊息
+                this.showNotification(`使用者「${name}」已成功新增`, 'success');
+                
+                this.debug('✅ 新增使用者完成');
+            }
+
+            validateUserInput(name, department) {
+                const errors = [];
+                const fields = [];
+
+                if (!name || name.length === 0) {
+                    errors.push('請輸入使用者姓名');
+                    fields.push('name');
+                } else if (name.length > 20) {
+                    errors.push('姓名不能超過 20 個字元');
+                    fields.push('name');
+                } else if (!/^[\u4e00-\u9fa5a-zA-Z\s]+$/.test(name)) {
+                    errors.push('姓名只能包含中文、英文和空格');
+                    fields.push('name');
+                }
+
+                if (!department) {
+                    errors.push('請選擇部門');
+                    fields.push('department');
+                }
+
+                return {
+                    valid: errors.length === 0,
+                    message: errors.join('、'),
+                    fields: fields
+                };
+            }
+
+            highlightInvalidFields(fields) {
+                // 重置所有欄位樣式
+                const allInputs = document.querySelectorAll('#add-user-form input, #add-user-form select');
+                allInputs.forEach(input => {
+                    input.classList.remove('border-red-500');
+                });
+
+                // 高亮錯誤欄位
+                fields.forEach(fieldName => {
+                    const field = document.getElementById(`new-user-${fieldName}`);
+                    if (field) {
+                        field.classList.add('border-red-500');
+                        field.focus();
+                    }
+                });
+            }
+
+            showAddUserError(message) {
+                const errorDiv = document.getElementById('add-user-error');
+                const errorText = document.getElementById('add-user-error-text');
+                
+                if (errorDiv && errorText) {
+                    errorText.textContent = message;
+                    errorDiv.classList.remove('hidden');
+                    
+                    // 自動隱藏錯誤訊息
+                    setTimeout(() => {
+                        this.hideAddUserError();
+                    }, 5000);
+                }
+            }
+
+            hideAddUserError() {
+                const errorDiv = document.getElementById('add-user-error');
+                if (errorDiv) {
+                    errorDiv.classList.add('hidden');
+                }
+            }
+
+            // 使用者選擇
+            selectUser(userId) {
+                const user = this.users.find(u => u.id === userId);
+                if (user) {
+                    this.currentUser = user;
+                    this.debug('👤 使用者已選擇:', user);
+                    
+                    this.hideAuthModal();
+                    this.showMainContent();
+                    this.updateUserInterface();
+                    
+                    this.showNotification(`歡迎，${user.name}！`, 'info');
+                }
+            }
+
+            // UI 管理
+            showAuthenticationUI() {
+                this.debug('🔐 顯示認證界面');
+                this.showAuthModal();
+                this.renderUserList();
+            }
+
+            showAuthModal() {
+                const modal = document.getElementById('auth-modal');
+                if (modal) {
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    this.debug('🔐 認證模態框已顯示');
+                }
+            }
+
+            hideAuthModal() {
+                const modal = document.getElementById('auth-modal');
+                if (modal) {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    this.debug('🔐 認證模態框已隱藏');
+                }
+            }
+
+            showMainContent() {
+                const mainContent = document.getElementById('main-content');
+                if (mainContent) {
+                    mainContent.classList.remove('hidden');
+                    this.debug('📱 主要內容已顯示');
+                }
+            }
+
+            hideMainContent() {
+                const mainContent = document.getElementById('main-content');
+                if (mainContent) {
+                    mainContent.classList.add('hidden');
+                    this.debug('📱 主要內容已隱藏');
+                }
+            }
+
+            renderUserList() {
+                this.debug('👥 渲染使用者列表');
+                const userList = document.getElementById('user-list');
+                if (!userList) return;
+
                 if (this.users.length === 0) {
-                    // 建立預設使用者
-                    this.users = [
-                        { id: '1', name: '管理者', department: '行政部', role: 'admin' },
-                        { id: '2', name: '李小明', department: '技術部', role: 'user' },
-                        { id: '3', name: '王小華', department: '業務部', role: 'user' },
-                        { id: '4', name: '張小芳', department: '財務部', role: 'user' }
-                    ];
-                    this.saveUsers();
+                    userList.innerHTML = `
+                        <div class="text-center py-6 text-slate-500">
+                            <i class="fas fa-user-plus text-3xl mb-2"></i>
+                            <p>尚無使用者，請新增第一個使用者</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                userList.innerHTML = this.users.map(user => `
+                    <button 
+                        class="user-select-btn w-full flex items-center p-4 text-left hover:bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        data-user-id="${user.id}"
+                        title="選擇 ${user.name}"
+                    >
+                        <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold mr-3">
+                            ${user.name.charAt(0)}
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-medium text-slate-800">${this.escapeHtml(user.name)}</div>
+                            <div class="text-sm text-slate-600">${this.escapeHtml(user.department)}</div>
+                        </div>
+                        <i class="fas fa-chevron-right text-slate-400"></i>
+                    </button>
+                `).join('');
+                
+                this.debug(`✅ 已渲染 ${this.users.length} 個使用者`);
+            }
+
+            updateUserInterface() {
+                this.debug('🔄 更新使用者界面');
+                
+                if (this.currentUser) {
+                    const userInfo = document.getElementById('current-user-info');
+                    if (userInfo) {
+                        userInfo.textContent = `${this.currentUser.name} - ${this.currentUser.department}`;
+                    }
+                }
+                
+                this.updateStatistics();
+            }
+
+            updateStatistics() {
+                const total = this.tasks.length;
+                const pending = this.tasks.filter(t => t.status === 'pending').length;
+                const inProgress = this.tasks.filter(t => t.status === 'in-progress').length;
+                const completed = this.tasks.filter(t => t.status === 'completed').length;
+
+                this.setElementText('total-tasks', total);
+                this.setElementText('pending-tasks', pending);
+                this.setElementText('in-progress-tasks', inProgress);
+                this.setElementText('completed-tasks', completed);
+            }
+
+            // 通知系統
+            showNotification(message, type = 'info') {
+                const container = document.getElementById('notification-container');
+                if (!container) return;
+
+                const notification = document.createElement('div');
+                notification.className = `success-message bg-white rounded-lg shadow-lg border-l-4 p-4 mb-2 max-w-sm`;
+                
+                let icon, bgColor, borderColor;
+                switch(type) {
+                    case 'success':
+                        icon = 'fas fa-check-circle text-green-500';
+                        borderColor = 'border-green-500';
+                        break;
+                    case 'error':
+                        icon = 'fas fa-exclamation-circle text-red-500';
+                        borderColor = 'border-red-500';
+                        break;
+                    case 'warning':
+                        icon = 'fas fa-exclamation-triangle text-yellow-500';
+                        borderColor = 'border-yellow-500';
+                        break;
+                    default:
+                        icon = 'fas fa-info-circle text-blue-500';
+                        borderColor = 'border-blue-500';
+                        break;
+                }
+
+                notification.className += ` ${borderColor}`;
+                notification.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="${icon} mr-3"></i>
+                        <span class="text-slate-800 font-medium">${this.escapeHtml(message)}</span>
+                        <button class="ml-auto text-slate-400 hover:text-slate-600 close-notification">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+
+                // 關閉按鈕事件
+                notification.querySelector('.close-notification').addEventListener('click', () => {
+                    this.removeNotification(notification);
+                });
+
+                container.appendChild(notification);
+
+                // 自動移除
+                setTimeout(() => {
+                    this.removeNotification(notification);
+                }, 4000);
+            }
+
+            removeNotification(notification) {
+                if (notification && notification.parentNode) {
+                    notification.style.opacity = '0';
+                    notification.style.transform = 'translateX(100%)';
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 300);
+                }
+            }
+
+            // 資料管理
+            initializeDefaultData() {
+                if (this.users.length === 0) {
+                    this.debug('👥 建立預設使用者');
+                    this.createDefaultUsers();
                 }
                 
                 if (this.tasks.length === 0) {
+                    this.debug('📋 建立範例任務');
                     this.createSampleTasks();
                 }
-                
-                this.showAuthModal();
+            }
+
+            createDefaultUsers() {
+                this.users = [
+                    {
+                        id: this.generateId(),
+                        name: '張小明',
+                        department: '工程部',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: this.generateId(),
+                        name: '李小華',
+                        department: '行銷部',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: this.generateId(),
+                        name: '王小美',
+                        department: '人事部',
+                        createdAt: new Date().toISOString()
+                    }
+                ];
+                this.saveUsers();
+                this.debug('✅ 預設使用者已建立');
             }
 
             createSampleTasks() {
                 this.tasks = [
                     {
-                        id: '1',
-                        title: '系統維護與更新',
-                        description: '進行伺服器系統的定期維護',
-                        priority: '高',
-                        status: '待辦事項',
-                        assignee: '李小明',
-                        department: '技術部',
+                        id: this.generateId(),
+                        title: '系統功能開發',
+                        description: '開發使用者管理和任務分配功能',
+                        assignee: '張小明',
+                        status: 'in-progress',
+                        priority: 'high',
+                        department: '工程部',
                         createdAt: new Date().toISOString()
                     },
                     {
-                        id: '2',
-                        title: '客戶需求分析',
-                        description: '分析新客戶需求並撰寫報告',
-                        priority: '中',
-                        status: '暫緩中',
-                        assignee: '王小華',
-                        department: '業務部',
-                        createdAt: new Date().toISOString()
-                    },
-                    {
-                        id: '3',
-                        title: '月報表製作',
-                        description: '製作本月財務報表',
-                        priority: '緊急',
-                        status: '已完成',
-                        assignee: '張小芳',
-                        department: '財務部',
+                        id: this.generateId(),
+                        title: '市場推廣活動',
+                        description: '規劃 Q4 產品推廣活動',
+                        assignee: '李小華',
+                        status: 'pending',
+                        priority: 'medium',
+                        department: '行銷部',
                         createdAt: new Date().toISOString()
                     }
                 ];
                 this.saveTasks();
+                this.debug('✅ 範例任務已建立');
             }
 
-            initializeEventListeners() {
-                // 認證相關
-                document.getElementById('add-user-btn').addEventListener('click', () => this.showAddUserModal());
-                document.getElementById('add-user-form').addEventListener('submit', (e) => this.handleAddUser(e));
-                document.getElementById('cancel-add-user').addEventListener('click', () => this.hideAddUserModal());
-                document.getElementById('logout-btn').addEventListener('click', () => this.logout());
+            saveUsers() {
+                this.saveToStorage('taskManager_users', this.users);
+            }
 
-                // 任務相關
-                document.getElementById('add-task-form').addEventListener('submit', (e) => this.handleAddTask(e));
-                document.getElementById('edit-task-form').addEventListener('submit', (e) => this.handleEditTask(e));
-    
+            saveTasks() {
+                this.saveToStorage('taskManager_tasks', this.tasks);
+            }
+
+            // 工具方法
+            generateId() {
+                return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            }
+
+            setElementText(id, text) {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.textContent = text;
+                }
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            hideAllModals() {
+                const modals = ['add-user-modal'];
+                modals.forEach(modalId => {
+                    const modal = document.getElementById(modalId);
+                    if (modal && !modal.classList.contains('hidden')) {
+                        modal.classList.add('hidden');
+                        modal.classList.remove('flex');
+                    }
+                });
+            }
+
+            toggleDebugMode() {
+                this.debugMode = !this.debugMode;
+                
+                // 切換偵錯信息顯示
+                const debugElements = document.querySelectorAll('[id$="-debug"]');
+                debugElements.forEach(el => {
+                    el.classList.toggle('hidden', !this.debugMode);
+                });
+                
+                this.debug(`🐛 Debug 模式: ${this.debugMode ? '開啟' : '關閉'}`);
+                this.showNotification(`偵錯模式${this.debugMode ? '開啟' : '關閉'}`, 'info');
+            }
+
+            logout() {
+                this.debug('🚪 使用者登出');
+                this.currentUser = null;
+                this.hideMainContent();
+                this.showAuthenticationUI();
+                this.showNotification('已登出', 'info');
+            }
+        }
+
+        // 初始化應用程式
+        console.log('🚀 載入任務管理系統最終版本...');
+
+        // 確保在 DOM 完全載入後初始化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                console.log('📄 DOM 載入完成，初始化任務管理器');
+                window.taskManager = new TaskManagerFinal();
+            });
+        } else {
+            console.log('📄 DOM 已載入，立即初始化任務管理器');
+            window.taskManager = new TaskManagerFinal();
+        }
+
+        // 備用初始化方法
+        window.addEventListener('load', () => {
+            if (!window.taskManager) {
+                console.log('🔄 使用備用方法初始化任務管理器');
+                window.taskManager = new TaskManagerFinal();
+            }
+        });
+
+        // 全域錯誤處理
+        window.addEventListener('error', (e) => {
+            console.error('💥 全域錯誤:', e.error);
+            if (window.taskManager && window.taskManager.showNotification) {
+                window.taskManager.showNotification('系統發生錯誤，請重新整理頁面', 'error');
+            }
+        });
+
+        // 防止意外關閉頁面
+        window.addEventListener('beforeunload', (e) => {
+            if (window.taskManager && window.taskManager.currentUser) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+</html>
